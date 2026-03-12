@@ -1,6 +1,6 @@
 from __future__ import annotations
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.config import KEYWORDS, BERLIN_INDICATORS, ONLINE_INDICATORS
 from src.models import Event
@@ -44,7 +44,11 @@ def filter_events(events: list[Event], start: datetime, end: datetime) -> list[E
     skipped_keyword = 0
 
     for event in events:
-        if event.date < start or event.date > end:
+        # Normalize to naive datetimes for comparison
+        event_date = event.date.replace(tzinfo=None) if event.date.tzinfo else event.date
+        start_naive = start.replace(tzinfo=None) if start.tzinfo else start
+        end_naive = end.replace(tzinfo=None) if end.tzinfo else end
+        if event_date < start_naive or event_date > end_naive:
             skipped_date += 1
             logger.info(f"Filtered (date {event.date.date()}): {event.title}")
             continue
