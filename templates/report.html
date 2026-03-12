@@ -110,13 +110,18 @@
         .source-tag {
             display: inline-block;
             font-size: 0.7rem;
-            color: #999;
-            background: #f9fafb;
-            border: 1px solid #e5e7eb;
-            padding: 0.1rem 0.4rem;
+            font-weight: 600;
+            padding: 0.1rem 0.5rem;
             border-radius: 4px;
             margin-left: 0.5rem;
         }
+        .source-meetup { background: #fee2e2; color: #dc2626; }
+        .source-luma { background: #ede9fe; color: #7c3aed; }
+        .source-eventbrite { background: #fff7ed; color: #ea580c; }
+        .source-allevents { background: #dbeafe; color: #2563eb; }
+        .source-serpapi { background: #dcfce7; color: #16a34a; }
+        .source-berlin-de { background: #fef9c3; color: #a16207; }
+        .source-ai-berlin { background: #cffafe; color: #0891b2; }
         .empty-state {
             text-align: center;
             padding: 3rem;
@@ -159,14 +164,10 @@
                     <div class="event-header">
                         <div class="event-title">
                             <a href="{{ event.url }}" target="_blank" rel="noopener">{{ event.title }}</a>
-                            <span class="source-tag">{{ event.source }}</span>
+                            <span class="source-tag source-{{ event.source | replace('.', '-') }}">{{ event.source }}</span>
                         </div>
-                        {% if event.price == "Free" %}
-                            <span class="badge badge-free">Free</span>
-                        {% elif event.price == "Paid" %}
+                        {% if event.price == "Paid" %}
                             <span class="badge badge-paid">Paid</span>
-                        {% else %}
-                            <span class="badge badge-unknown">{{ event.price }}</span>
                         {% endif %}
                     </div>
                     <div class="event-details">
