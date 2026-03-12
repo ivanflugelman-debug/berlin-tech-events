@@ -44,11 +44,7 @@ def filter_events(events: list[Event], start: datetime, end: datetime) -> list[E
     skipped_keyword = 0
 
     for event in events:
-        # Normalize to naive datetimes for comparison
-        event_date = event.date.replace(tzinfo=None) if event.date.tzinfo else event.date
-        start_naive = start.replace(tzinfo=None) if start.tzinfo else start
-        end_naive = end.replace(tzinfo=None) if end.tzinfo else end
-        if event_date < start_naive or event_date > end_naive:
+        if event.date < start or event.date > end:
             skipped_date += 1
             logger.info(f"Filtered (date {event.date.date()}): {event.title}")
             continue
