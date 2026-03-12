@@ -44,11 +44,9 @@ class SerpApiScraper(BaseScraper):
     def _search_events(self, query: str, start: datetime, end: datetime) -> list[Event]:
         """Search Google Events via SerpAPI for a single query across multiple date chips."""
         date_chips = [
-            "date:today",
             "date:this_week",
             "date:next_week",
             "date:this_month",
-            "date:next_month",
         ]
 
         all_events = []
@@ -71,7 +69,15 @@ class SerpApiScraper(BaseScraper):
                 logger.error(f"SerpAPI query '{query}' (chip={chip}) failed: {e}")
                 continue
 
-            for item in data.get("events_results", []):
+            # Log API errors or empty results for debugging
+            if "error" in data:
+                logger.warning(f"SerpAPI error for '{query}' ({chip}): {data['error']}")
+                continue
+
+            results = data.get("events_results", [])
+            logger.debug(f"SerpAPI '{query}' ({chip}): {len(results)} results")
+
+            for item in results:
                 event = self._parse_event(item, start, end)
                 if event and event.title not in seen_titles:
                     all_events.append(event)

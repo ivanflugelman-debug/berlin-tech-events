@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+import re
 from datetime import datetime
 
 from bs4 import BeautifulSoup
@@ -27,50 +28,114 @@ class SibbScraper(BaseScraper):
         events = []
         seen_urls = set()
 
-        # SIBB uses teaser cards with event info
-        for card in soup.select("article, .event, .teaser, .tribe-events-calendar-list__event, .type-tribe_events, [class*='event']"):
-            event = self._parse_card(card)
+        # Strategy 1: Parse calendar grid — td cells with day number + event link
+        events = self._parse_calendar_grid(soup, start, end)
+        seen_urls.update(e.url for e in events)
+
+        # Strategy 2: Parse swiper slides (featured events)
+        for slide in soup.select(".swiper-slide"):
+            event = self._parse_slide(slide)
             if event and event.url not in seen_urls:
                 events.append(event)
                 seen_urls.add(event.url)
 
-        # Also try finding links with date patterns
-        if not events:
-            for a_tag in soup.find_all("a", href=True):
-                href = a_tag.get("href", "")
-                # SIBB event links often point to Eventbrite or their own detail pages
-                if "/event" not in href.lower() and "/veranstaltung" not in href.lower():
-                    continue
+        # Strategy 3: Any links to eventbrite-event pages
+        for a_tag in soup.find_all("a", href=re.compile(r"/eventbrite-event/")):
+            url = a_tag.get("href", "")
+            if not url.startswith("http"):
+                url = f"https://sibb.de{url}"
+            if url in seen_urls:
+                continue
 
-                title = a_tag.get_text(strip=True)[:150]
-                if not title or len(title) < 5:
-                    continue
+            title = a_tag.get_text(strip=True)[:150]
+            if not title or len(title) < 4:
+                continue
 
-                url = href if href.startswith("http") else f"https://sibb.de{href}"
-                if url in seen_urls:
-                    continue
+            # Try to extract date from surrounding context
+            parent = a_tag.parent
+            dt = self._extract_date_nearby(parent)
+            if not dt:
+                continue
 
-                # Try to find a date nearby
-                parent = a_tag.parent
-                dt = self._extract_date_from_element(parent)
-                if not dt and parent:
-                    dt = self._extract_date_from_element(parent.parent)
-
-                if dt:
-                    seen_urls.add(url)
-                    events.append(Event(
-                        title=title,
-                        date=dt,
-                        url=url,
-                        source=self.name,
-                        location="Berlin",
-                        price="Unknown",
-                    ))
+            seen_urls.add(url)
+            events.append(Event(
+                title=title,
+                date=dt,
+                url=url,
+                source=self.name,
+                location="Berlin",
+                price="Unknown",
+            ))
 
         return events
 
-    def _parse_card(self, card) -> Event | None:
-        link = card.find("a", href=True)
+    def _parse_calendar_grid(self, soup: BeautifulSoup, start: datetime, end: datetime) -> list[Event]:
+        """Parse the WordPress Eventbrite Calendar grid.
+
+        Calendar cells look like: <td><strong>17</strong><a href="...">Event Title</a></td>
+        The month/year context comes from the calendar header.
+        """
+        events = []
+
+        # Try to find current month/year from calendar header
+        now = datetime.now()
+        cal_month = now.month
+        cal_year = now.year
+
+        # Look for month/year in calendar header (e.g. "March 2026")
+        header = soup.find(class_=re.compile(r'(month|calendar).*(title|header|nav)', re.I))
+        if not header:
+            header = soup.find("caption") or soup.find("th", colspan=True)
+        if header:
+            header_text = header.get_text(strip=True)
+            try:
+                dt_header = dateparser.parse(header_text, fuzzy=True)
+                if dt_header:
+                    cal_month = dt_header.month
+                    cal_year = dt_header.year
+            except (ValueError, TypeError):
+                pass
+
+        # Parse td cells
+        for td in soup.find_all("td"):
+            # Find day number
+            strong = td.find("strong")
+            if not strong:
+                continue
+            day_text = strong.get_text(strip=True)
+            try:
+                day = int(day_text)
+            except ValueError:
+                continue
+
+            # Find event links in this cell
+            for link in td.find_all("a", href=True):
+                url = link.get("href", "")
+                if not url.startswith("http"):
+                    url = f"https://sibb.de{url}"
+
+                title = link.get_text(strip=True)[:150]
+                if not title or len(title) < 4:
+                    continue
+
+                try:
+                    dt = datetime(cal_year, cal_month, day)
+                except ValueError:
+                    continue
+
+                events.append(Event(
+                    title=title,
+                    date=dt,
+                    url=url,
+                    source=self.name,
+                    location="Berlin",
+                    price="Unknown",
+                ))
+
+        return events
+
+    def _parse_slide(self, slide) -> Event | None:
+        link = slide.find("a", href=True)
         if not link:
             return None
 
@@ -78,53 +143,51 @@ class SibbScraper(BaseScraper):
         if not url.startswith("http"):
             url = f"https://sibb.de{url}"
 
-        title_el = card.find(["h1", "h2", "h3", "h4"]) or link
+        title_el = slide.find(["h2", "h3", "h4"]) or link
         title = title_el.get_text(strip=True)[:150]
         if not title or len(title) < 4:
             return None
 
-        dt = self._extract_date_from_element(card)
+        dt = self._extract_date_nearby(slide)
+        if not dt:
+            # If no date, use the link text which might contain a date
+            try:
+                dt = dateparser.parse(slide.get_text(" ", strip=True), fuzzy=True)
+            except (ValueError, TypeError):
+                return None
+
         if not dt:
             return None
-
-        # Location
-        location = "Berlin"
-        loc_el = card.find(class_=lambda c: c and ("location" in c.lower() or "venue" in c.lower() or "ort" in c.lower()) if c else False)
-        if loc_el:
-            location = loc_el.get_text(strip=True) or "Berlin"
 
         return Event(
             title=title,
             date=dt,
             url=url,
             source=self.name,
-            location=location,
+            location="Berlin",
             price="Unknown",
         )
 
-    def _extract_date_from_element(self, el) -> datetime | None:
+    def _extract_date_nearby(self, el) -> datetime | None:
         if el is None:
             return None
 
-        # Try <time> tag first
-        time_el = el.find("time") if hasattr(el, 'find') else None
-        if time_el:
-            dt_str = time_el.get("datetime") or time_el.get_text(strip=True)
-            try:
-                dt = dateparser.parse(dt_str, fuzzy=True)
-                if dt:
-                    return dt
-            except (ValueError, TypeError):
-                pass
+        # Try <time> tag
+        if hasattr(el, 'find'):
+            time_el = el.find("time")
+            if time_el:
+                dt_str = time_el.get("datetime") or time_el.get_text(strip=True)
+                try:
+                    return dateparser.parse(dt_str, fuzzy=True)
+                except (ValueError, TypeError):
+                    pass
 
-        # Try date class
-        date_el = el.find(class_=lambda c: c and "date" in c.lower() if c else False) if hasattr(el, 'find') else None
-        if date_el:
-            try:
-                dt = dateparser.parse(date_el.get_text(strip=True), fuzzy=True)
-                if dt:
-                    return dt
-            except (ValueError, TypeError):
-                pass
+            # Try date class
+            date_el = el.find(class_=lambda c: c and "date" in c.lower() if c else False)
+            if date_el:
+                try:
+                    return dateparser.parse(date_el.get_text(strip=True), fuzzy=True)
+                except (ValueError, TypeError):
+                    pass
 
         return None

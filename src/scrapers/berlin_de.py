@@ -92,10 +92,45 @@ class BerlinDeScraper(BaseScraper):
                 if event:
                     events.append(event)
 
+        # Fallback 2: scan for h3 > a event links (berlin.de minimal HTML)
+        if not events:
+            for h3 in soup.find_all("h3"):
+                link = h3.find("a", href=True)
+                if not link:
+                    continue
+                href = link.get("href", "")
+                if "/events/" not in href and "/veranstaltungen/" not in href:
+                    continue
+
+                url_full = href if href.startswith("http") else f"https://www.berlin.de{href}"
+                title = link.get_text(strip=True)[:150]
+                if not title:
+                    continue
+
+                # Try to find date in the next sibling
+                sibling = h3.find_next_sibling()
+                if sibling:
+                    sib_text = sibling.get_text(strip=True)
+                    try:
+                        dt = dateparser.parse(sib_text, fuzzy=True)
+                        if dt and start <= dt <= end:
+                            events.append(Event(
+                                title=title,
+                                date=dt,
+                                url=url_full,
+                                source=self.name,
+                                location="Berlin",
+                                price="Unknown",
+                            ))
+                    except (ValueError, TypeError):
+                        pass
+
         return events
 
     def _parse_jsonld(self, data: dict, start: datetime, end: datetime) -> Event | None:
-        if data.get("@type") not in ("Event", "SocialEvent", "BusinessEvent", "EducationEvent"):
+        # Accept any schema.org type ending in "Event"
+        etype = data.get("@type", "")
+        if not isinstance(etype, str) or "Event" not in etype:
             return None
 
         title = data.get("name", "")

@@ -22,7 +22,7 @@ class DevEventsScraper(BaseScraper):
         all_events = []
         seen_urls = set()
 
-        # Fetch first few pages (htmx pagination uses ?page=N)
+        # Fetch first few pages
         for page in range(1, 4):
             events = self._scrape_page(page)
             if not events:
@@ -37,15 +37,18 @@ class DevEventsScraper(BaseScraper):
     def _scrape_page(self, page: int) -> list[Event]:
         url = self.SEARCH_URL if page == 1 else f"{self.SEARCH_URL}&page={page}"
         try:
-            resp = self._get(url)
+            # Add referer to look like navigation from the site
+            resp = self._get(url, headers={
+                "Referer": "https://dev.events/",
+            })
         except Exception as e:
-            logger.error(f"dev.events fetch failed (page {page}): {e}")
+            logger.warning(f"dev.events fetch failed (page {page}): {e}")
             return []
 
         soup = BeautifulSoup(resp.text, "lxml")
         events = []
 
-        # Try JSON-LD (EducationEvent blocks)
+        # Primary: Parse JSON-LD EducationEvent blocks
         for script in soup.find_all("script", type="application/ld+json"):
             try:
                 data = json.loads(script.string)
@@ -63,18 +66,16 @@ class DevEventsScraper(BaseScraper):
             except (json.JSONDecodeError, Exception):
                 continue
 
-        # HTML fallback
+        # Fallback: parse classless HTML structure
+        # Pattern: <a href="/ical/...">DATE</a> <a href="/conferences/...">TITLE</a>
         if not events:
-            for card in soup.select("article, .event-card, [class*='event'], .card"):
-                event = self._parse_card(card)
-                if event:
-                    events.append(event)
+            events = self._parse_html(soup)
 
         return events
 
     def _parse_jsonld(self, data: dict) -> Event | None:
-        event_types = ("Event", "SocialEvent", "BusinessEvent", "EducationEvent")
-        if data.get("@type") not in event_types:
+        etype = data.get("@type", "")
+        if not isinstance(etype, str) or "Event" not in etype:
             return None
 
         title = data.get("name", "")
@@ -103,17 +104,13 @@ class DevEventsScraper(BaseScraper):
         elif isinstance(location_data, str) and location_data:
             location = location_data
 
-        organizer_data = data.get("organizer", {})
+        organizer_data = data.get("organizer") or data.get("performer", {})
         organizer = organizer_data.get("name", "") if isinstance(organizer_data, dict) else ""
 
-        offers = data.get("offers", {})
-        price = "Unknown"
-        if isinstance(offers, dict):
-            price_val = offers.get("price", "")
-            if price_val in (0, "0", "0.00"):
-                price = "Free"
-            elif price_val:
-                price = "Paid"
+        # Check attendance mode
+        attendance = data.get("eventAttendanceMode", "")
+        if "Online" in str(attendance) and "Mixed" not in str(attendance):
+            return None  # Skip online-only events
 
         return Event(
             title=title,
@@ -123,38 +120,46 @@ class DevEventsScraper(BaseScraper):
             location=location,
             organizer=organizer,
             summary=data.get("description", "")[:300],
-            price=price,
+            price="Unknown",
         )
 
-    def _parse_card(self, card) -> Event | None:
-        link = card.find("a", href=True)
-        if not link:
-            return None
+    def _parse_html(self, soup: BeautifulSoup) -> list[Event]:
+        """Parse classless HTML: <a href="/ical/...">date</a> ... <a href="/conferences/...">title</a>"""
+        events = []
 
-        url = link.get("href", "")
-        if not url.startswith("http"):
-            url = f"{self.BASE_URL}{url}"
-
-        title_el = card.find(["h2", "h3", "h4"]) or link
-        title = title_el.get_text(strip=True)[:150]
-        if not title or len(title) < 4:
-            return None
-
-        time_el = card.find("time")
-        if time_el:
-            dt_str = time_el.get("datetime") or time_el.get_text(strip=True)
+        for ical_link in soup.find_all("a", href=lambda h: h and "/ical/" in h):
+            date_text = ical_link.get_text(strip=True)
             try:
-                dt = dateparser.parse(dt_str, fuzzy=True)
-                if dt:
-                    return Event(
-                        title=title,
-                        date=dt,
-                        url=url,
-                        source=self.name,
-                        location="Berlin",
-                        price="Unknown",
-                    )
+                dt = dateparser.parse(date_text, fuzzy=True)
+                if not dt:
+                    continue
             except (ValueError, TypeError):
-                pass
+                continue
 
-        return None
+            # Find the conference link nearby (next sibling <a>)
+            parent = ical_link.parent
+            if not parent:
+                continue
+
+            conf_link = parent.find("a", href=lambda h: h and "/conferences/" in h)
+            if not conf_link:
+                continue
+
+            title = conf_link.get_text(strip=True)[:150]
+            if not title:
+                continue
+
+            url = conf_link.get("href", "")
+            if not url.startswith("http"):
+                url = f"{self.BASE_URL}{url}"
+
+            events.append(Event(
+                title=title,
+                date=dt,
+                url=url,
+                source=self.name,
+                location="Berlin",
+                price="Unknown",
+            ))
+
+        return events

@@ -16,33 +16,81 @@ logger = logging.getLogger(__name__)
 class EventbriteScraper(BaseScraper):
     name = "eventbrite"
 
-    # Use eventbrite.de only — .com returns 405 for German events
+    # Try both .com and .de — one may work depending on request origin
     SEARCH_URLS = [
+        "https://www.eventbrite.com/d/germany--berlin/tech/",
+        "https://www.eventbrite.com/d/germany--berlin/ai/",
+        "https://www.eventbrite.com/d/germany--berlin/startup/",
+        "https://www.eventbrite.com/d/germany--berlin/data-science/",
+        "https://www.eventbrite.com/d/germany--berlin/science-and-tech/",
         "https://www.eventbrite.de/d/germany--berlin/tech/",
         "https://www.eventbrite.de/d/germany--berlin/ai/",
         "https://www.eventbrite.de/d/germany--berlin/startup/",
-        "https://www.eventbrite.de/d/germany--berlin/data-science/",
-        "https://www.eventbrite.de/d/germany--berlin/software-engineering/",
-        "https://www.eventbrite.de/d/germany--berlin/science-and-tech/",
-        "https://www.eventbrite.de/d/germany--berlin/networking/",
     ]
+
+    # Eventbrite internal search API — works without auth
+    SEARCH_API = "https://www.eventbrite.com/api/v3/destination/search/"
 
     def scrape(self, start: datetime, end: datetime) -> list[Event]:
         all_events = []
         seen_urls = set()
+
+        # Strategy 1: Try the internal search API
+        api_events = self._scrape_api(start, end)
+        for event in api_events:
+            if event.url not in seen_urls:
+                all_events.append(event)
+                seen_urls.add(event.url)
+
+        if all_events:
+            return all_events
+
+        # Strategy 2: Scrape HTML pages
         for url in self.SEARCH_URLS:
             events = self._scrape_page(url)
             for event in events:
                 if event.url not in seen_urls:
                     all_events.append(event)
                     seen_urls.add(event.url)
+
         return all_events
+
+    def _scrape_api(self, start: datetime, end: datetime) -> list[Event]:
+        """Try Eventbrite's internal search API."""
+        events = []
+        for query in ["tech", "AI", "startup", "data science", "software"]:
+            try:
+                payload = {
+                    "event_search": {
+                        "q": query,
+                        "places": ["Berlin"],
+                        "dates": ["current_future"],
+                        "page": 1,
+                        "page_size": 50,
+                    },
+                }
+                resp = self.session.post(
+                    self.SEARCH_API,
+                    json=payload,
+                    timeout=15,
+                )
+                if resp.status_code != 200:
+                    continue
+                data = resp.json()
+                for item in data.get("events", {}).get("results", []):
+                    event = self._parse_eb_event(item)
+                    if event:
+                        events.append(event)
+            except Exception as e:
+                logger.debug(f"Eventbrite API query '{query}' failed: {e}")
+                continue
+        return events
 
     def _scrape_page(self, url: str) -> list[Event]:
         try:
             resp = self._get(url)
         except Exception as e:
-            logger.error(f"Eventbrite fetch failed for {url}: {e}")
+            logger.warning(f"Eventbrite fetch failed for {url}: {e}")
             return []
 
         soup = BeautifulSoup(resp.text, "lxml")
@@ -64,7 +112,7 @@ class EventbriteScraper(BaseScraper):
                             event = self._parse_jsonld(el)
                             if event:
                                 events.append(event)
-                    elif item.get("@type") in ("Event", "SocialEvent", "BusinessEvent", "EducationEvent"):
+                    elif isinstance(item.get("@type"), str) and "Event" in item["@type"]:
                         event = self._parse_jsonld(item)
                         if event:
                             events.append(event)
@@ -93,7 +141,7 @@ class EventbriteScraper(BaseScraper):
     def _parse_server_data(self, html: str) -> list[Event]:
         """Extract events from window.__SERVER_DATA__ JSON blob."""
         events = []
-        match = re.search(r'window\.__SERVER_DATA__\s*=\s*({.*?});?\s*</script>', html, re.DOTALL)
+        match = re.search(r'window\.__SERVER_DATA__\s*=\s*({.*?});\s*</script>', html, re.DOTALL)
         if not match:
             return events
 
@@ -102,15 +150,14 @@ class EventbriteScraper(BaseScraper):
         except json.JSONDecodeError:
             return events
 
-        # Navigate nested structure: search_data.events.results or similar
+        # Navigate nested structure
         results = []
-        for path in [
+        for path_fn in [
             lambda d: d.get("search_data", {}).get("events", {}).get("results", []),
             lambda d: d.get("search_data", {}).get("results", []),
-            lambda d: d.get("jsonld", {}).get("itemListElement", []),
         ]:
             try:
-                r = path(data)
+                r = path_fn(data)
                 if r:
                     results = r
                     break
@@ -164,25 +211,40 @@ class EventbriteScraper(BaseScraper):
         if not title:
             return None
 
-        start_info = item.get("start", {}) or item.get("start_date", "") or item.get("primary_venue_start", "")
-        if isinstance(start_info, dict):
-            dt_str = start_info.get("local", "") or start_info.get("utc", "")
-        else:
-            dt_str = str(start_info)
+        # Handle various date formats from different data sources
+        dt = None
 
-        if not dt_str:
-            return None
+        # Format 1: start_date + start_time (from __SERVER_DATA__)
+        start_date = item.get("start_date", "")
+        start_time = item.get("start_time", "")
+        if start_date:
+            dt_str = f"{start_date}T{start_time}" if start_time else start_date
+            try:
+                dt = dateparser.parse(dt_str)
+            except (ValueError, TypeError):
+                pass
 
-        try:
-            dt = dateparser.parse(dt_str)
-            if dt is None:
-                return None
-        except (ValueError, TypeError):
+        # Format 2: start dict with local/utc
+        if not dt:
+            start_info = item.get("start", {}) or item.get("primary_venue_start", "")
+            if isinstance(start_info, dict):
+                dt_str = start_info.get("local", "") or start_info.get("utc", "")
+            else:
+                dt_str = str(start_info) if start_info else ""
+
+            if dt_str:
+                try:
+                    dt = dateparser.parse(dt_str)
+                except (ValueError, TypeError):
+                    pass
+
+        if not dt:
             return None
 
         venue = item.get("venue", {}) or item.get("primary_venue", {}) or {}
         location = venue.get("name", "")
-        city = venue.get("city", "") or (venue.get("address", {}) or {}).get("city", "")
+        address = venue.get("address", {}) or {}
+        city = venue.get("city", "") or address.get("city", "") or address.get("address_locality", "")
         if city:
             location = f"{location}, {city}" if location else city
 
@@ -200,7 +262,8 @@ class EventbriteScraper(BaseScraper):
         )
 
     def _parse_jsonld(self, data: dict) -> Event | None:
-        if data.get("@type") not in ("Event", "SocialEvent", "BusinessEvent", "EducationEvent"):
+        etype = data.get("@type", "")
+        if not isinstance(etype, str) or "Event" not in etype:
             return None
 
         title = data.get("name", "")
@@ -270,7 +333,7 @@ class EventbriteScraper(BaseScraper):
 
         url = link.get("href", "")
         if not url.startswith("http"):
-            url = f"https://www.eventbrite.de{url}"
+            url = f"https://www.eventbrite.com{url}"
 
         title = link.get_text(strip=True)[:150]
         if not title or len(title) < 5:
