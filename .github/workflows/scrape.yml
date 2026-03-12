@@ -57,5 +57,6 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "Update events (${{ steps.mode.outputs.mode }} — $(date -u +%Y-%m-%d))"
+            git pull --rebase
             git push
           fi
