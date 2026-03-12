@@ -49,6 +49,39 @@
         .toggle a:hover:not(.active) {
             background: #eff6ff;
         }
+        /* Search bar */
+        .search-bar {
+            max-width: 500px;
+            margin: 0 auto 1.5rem;
+            position: relative;
+        }
+        .search-bar input {
+            width: 100%;
+            padding: 0.6rem 1rem 0.6rem 2.5rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .search-bar input:focus {
+            border-color: #2563eb;
+        }
+        .search-bar::before {
+            content: "\1F50D";
+            position: absolute;
+            left: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1rem;
+        }
+        .search-count {
+            text-align: center;
+            color: #888;
+            font-size: 0.8rem;
+            margin-bottom: 1rem;
+            display: none;
+        }
         .date-group h2 {
             font-size: 1.1rem;
             padding: 0.75rem 0 0.5rem;
@@ -67,6 +100,7 @@
         .event-card:hover {
             box-shadow: 0 2px 8px rgba(0,0,0,0.12);
         }
+        .event-card.hidden { display: none; }
         .event-header {
             display: flex;
             align-items: flex-start;
@@ -77,12 +111,19 @@
         .event-title {
             font-size: 1.05rem;
             font-weight: 600;
+            flex: 1;
         }
         .event-title a {
             color: #1f2937;
             text-decoration: none;
         }
         .event-title a:hover { color: #2563eb; }
+        .event-actions {
+            display: flex;
+            gap: 0.4rem;
+            align-items: center;
+            flex-shrink: 0;
+        }
         .badge {
             display: inline-block;
             padding: 0.15rem 0.6rem;
@@ -94,6 +135,18 @@
         .badge-free { background: #dcfce7; color: #166534; }
         .badge-paid { background: #ffedd5; color: #9a3412; }
         .badge-unknown { background: #f3f4f6; color: #6b7280; }
+        .cal-link {
+            display: inline-block;
+            font-size: 0.7rem;
+            font-weight: 500;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            background: #eff6ff;
+            color: #2563eb;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+        .cal-link:hover { background: #dbeafe; }
         .event-details {
             margin-top: 0.4rem;
             font-size: 0.88rem;
@@ -122,6 +175,11 @@
         .source-serpapi { background: #dcfce7; color: #16a34a; }
         .source-berlin-de { background: #fef9c3; color: #a16207; }
         .source-ai-berlin { background: #cffafe; color: #0891b2; }
+        .source-sibb { background: #ccfbf1; color: #0d9488; }
+        .source-dev-events { background: #fef3c7; color: #d97706; }
+        .source-c-base { background: #e0e7ff; color: #4f46e5; }
+        .source-visitberlin { background: #fce7f3; color: #db2777; }
+        .source-ihk-berlin { background: #d1fae5; color: #059669; }
         .empty-state {
             text-align: center;
             padding: 3rem;
@@ -133,16 +191,39 @@
             color: #999;
             font-size: 0.8rem;
         }
+        .source-stats {
+            margin-top: 0.75rem;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        .source-stat {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-size: 0.75rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            background: #f3f4f6;
+        }
+        .source-stat .count {
+            font-weight: 700;
+        }
+        .source-stat.has-error {
+            opacity: 0.5;
+        }
         @media (max-width: 640px) {
             body { padding: 0.5rem; }
             .event-header { flex-direction: column; }
+            .event-actions { margin-top: 0.25rem; }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🗓 Berlin Tech Events</h1>
+            <h1>Berlin Tech Events</h1>
             <p class="subtitle">{{ mode | capitalize }} view — {{ start_date }} to {{ end_date }}</p>
         </header>
 
@@ -155,16 +236,30 @@
             <a href="monthly.html" class="{{ 'active' if mode == 'monthly' }}">Monthly</a>
         </div>
 
+        <div class="search-bar">
+            <input type="text" id="searchInput" placeholder="Filter events by title, location, or organizer..." autocomplete="off">
+        </div>
+        <div class="search-count" id="searchCount"></div>
+
         {% if events_by_date %}
             {% for date_str, events in events_by_date %}
             <div class="date-group">
                 <h2>{{ date_str }}</h2>
                 {% for event in events %}
-                <div class="event-card">
+                <div class="event-card" data-search="{{ event.title | lower }} {{ event.location | lower }} {{ event.organizer | lower }}">
                     <div class="event-header">
                         <div class="event-title">
                             <a href="{{ event.url }}" target="_blank" rel="noopener">{{ event.title }}</a>
                             <span class="source-tag source-{{ event.source | replace('.', '-') }}">{{ event.source }}</span>
+                        </div>
+                        <div class="event-actions">
+                            {% if event.price == "Free" %}
+                            <span class="badge badge-free">Free</span>
+                            {% elif event.price == "Paid" %}
+                            <span class="badge badge-paid">Paid</span>
+                            {% endif %}
+                            <a class="cal-link" target="_blank" rel="noopener"
+                               href="https://www.google.com/calendar/render?action=TEMPLATE&text={{ event.title | urlencode }}&dates={{ event.date.strftime('%Y%m%dT%H%M%S') }}/{{ (event.end_date or event.date).strftime('%Y%m%dT%H%M%S') }}&location={{ event.location | urlencode }}&details={{ event.url | urlencode }}">+ Cal</a>
                         </div>
                     </div>
                     <div class="event-details">
@@ -187,8 +282,44 @@
         {% endif %}
 
         <footer>
-            Berlin Tech Events Scraper · Auto-generated from {{ sources | length }} sources
+            <div>Berlin Tech Events Scraper · Auto-generated from {{ sources | length }} sources</div>
+            {% if scrape_results %}
+            <div class="source-stats">
+                {% for r in scrape_results %}
+                <span class="source-stat {{ 'has-error' if r.error }}">
+                    <span class="source-tag source-{{ r.source | replace('.', '-') }}">{{ r.source }}</span>
+                    <span class="count">{{ source_counts.get(r.source, 0) }}</span>
+                </span>
+                {% endfor %}
+            </div>
+            {% endif %}
         </footer>
     </div>
+
+    <script>
+    (function() {
+        var input = document.getElementById('searchInput');
+        var countEl = document.getElementById('searchCount');
+        var cards = document.querySelectorAll('.event-card');
+        var total = cards.length;
+
+        input.addEventListener('input', function() {
+            var q = this.value.toLowerCase().trim();
+            if (!q) {
+                cards.forEach(function(c) { c.classList.remove('hidden'); });
+                countEl.style.display = 'none';
+                return;
+            }
+            var shown = 0;
+            cards.forEach(function(c) {
+                var match = c.getAttribute('data-search').indexOf(q) !== -1;
+                c.classList.toggle('hidden', !match);
+                if (match) shown++;
+            });
+            countEl.textContent = shown + ' of ' + total + ' events match';
+            countEl.style.display = 'block';
+        });
+    })();
+    </script>
 </body>
 </html>

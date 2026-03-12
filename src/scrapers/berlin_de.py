@@ -11,27 +11,63 @@ from src.scrapers.base import BaseScraper
 
 logger = logging.getLogger(__name__)
 
+# Month names for dynamic URL generation
+MONTH_NAMES_EN = [
+    "", "january", "february", "march", "april", "may", "june",
+    "july", "august", "september", "october", "november", "december",
+]
+MONTH_NAMES_DE = [
+    "", "januar", "februar", "maerz", "april", "mai", "juni",
+    "juli", "august", "september", "oktober", "november", "dezember",
+]
+
 
 class BerlinDeScraper(BaseScraper):
     name = "berlin.de"
 
-    URLS = [
-        "https://www.berlin.de/en/events/",
-        "https://www.berlin.de/events/",
-    ]
+    def _get_urls(self, start: datetime, end: datetime) -> list[str]:
+        """Generate dynamic monthly path URLs covering the date window."""
+        urls = []
+        months_seen = set()
+
+        # Collect all months in the date range
+        current = start
+        while current <= end:
+            key = (current.year, current.month)
+            if key not in months_seen:
+                months_seen.add(key)
+                month_en = MONTH_NAMES_EN[current.month]
+                month_de = MONTH_NAMES_DE[current.month]
+                urls.append(f"https://www.berlin.de/en/events/{month_en}/")
+                urls.append(f"https://www.berlin.de/events/{month_de}/")
+            # Jump to next month
+            if current.month == 12:
+                current = current.replace(year=current.year + 1, month=1, day=1)
+            else:
+                current = current.replace(month=current.month + 1, day=1)
+
+        # Also try the generic events pages as fallback
+        urls.append("https://www.berlin.de/en/events/")
+        urls.append("https://www.berlin.de/events/")
+
+        return urls
 
     def scrape(self, start: datetime, end: datetime) -> list[Event]:
         all_events = []
-        for url in self.URLS:
+        seen_urls = set()
+        for url in self._get_urls(start, end):
             events = self._scrape_page(url, start, end)
-            all_events.extend(events)
+            for event in events:
+                if event.url not in seen_urls:
+                    all_events.append(event)
+                    seen_urls.add(event.url)
         return all_events
 
     def _scrape_page(self, url: str, start: datetime, end: datetime) -> list[Event]:
         try:
             resp = self._get(url)
         except Exception as e:
-            logger.error(f"berlin.de fetch failed for {url}: {e}")
+            logger.debug(f"berlin.de fetch failed for {url}: {e}")
             return []
 
         soup = BeautifulSoup(resp.text, "lxml")
@@ -51,7 +87,7 @@ class BerlinDeScraper(BaseScraper):
 
         # Fallback: parse event listing HTML
         if not events:
-            for card in soup.select(".event, .veranstaltung, article"):
+            for card in soup.select(".event, .veranstaltung, article, .teaser, .list-item"):
                 event = self._parse_card(card, start, end)
                 if event:
                     events.append(event)

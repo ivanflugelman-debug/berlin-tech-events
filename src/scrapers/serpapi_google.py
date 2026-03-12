@@ -4,11 +4,19 @@ from datetime import datetime
 
 from dateutil import parser as dateparser
 
-from src.config import SERPAPI_KEY, SEARCH_QUERIES
+from src.config import SERPAPI_KEY
 from src.models import Event
 from src.scrapers.base import BaseScraper
 
 logger = logging.getLogger(__name__)
+
+# Top 4 queries to conserve API quota while maximizing coverage
+TOP_QUERIES = [
+    "tech events Berlin",
+    "AI meetup Berlin",
+    "startup events Berlin",
+    "developer conference Berlin",
+]
 
 
 class SerpApiScraper(BaseScraper):
@@ -24,22 +32,27 @@ class SerpApiScraper(BaseScraper):
             return []
 
         all_events = []
-        for query in SEARCH_QUERIES:
+        seen_urls = set()
+        for query in TOP_QUERIES:
             events = self._search_events(query, start, end)
-            all_events.extend(events)
+            for event in events:
+                if event.url and event.url not in seen_urls:
+                    all_events.append(event)
+                    seen_urls.add(event.url)
         return all_events
 
     def _search_events(self, query: str, start: datetime, end: datetime) -> list[Event]:
-        """Search Google Events via SerpAPI for a single query."""
-        # Try different date chips: "This week", "Next week", "This month"
+        """Search Google Events via SerpAPI for a single query across multiple date chips."""
         date_chips = [
+            "date:today",
+            "date:this_week",
             "date:next_week",
             "date:this_month",
             "date:next_month",
-            "",  # no filter
         ]
 
         all_events = []
+        seen_titles = set()
         for chip in date_chips:
             params = {
                 "engine": "google_events",
@@ -60,12 +73,11 @@ class SerpApiScraper(BaseScraper):
 
             for item in data.get("events_results", []):
                 event = self._parse_event(item, start, end)
-                if event:
+                if event and event.title not in seen_titles:
                     all_events.append(event)
+                    seen_titles.add(event.title)
 
-            # If we got results, don't try other chips (save API quota)
-            if all_events:
-                break
+            # Do NOT break early — collect from all date chips
 
         return all_events
 
@@ -90,9 +102,6 @@ class SerpApiScraper(BaseScraper):
                 return None
         except (ValueError, TypeError):
             return None
-
-        # Don't filter by date here — let the filter step handle it
-        # This way we collect all events and the filter decides
 
         # Location
         address_parts = item.get("address", [])

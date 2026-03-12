@@ -3,6 +3,16 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
+
+@dataclass
+class ScrapeResult:
+    """Per-source scraping statistics."""
+    source: str
+    raw_count: int = 0
+    duration: float = 0.0
+    error: str = ""
+
+
 @dataclass
 class Event:
     title: str

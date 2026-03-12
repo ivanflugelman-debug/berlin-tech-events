@@ -6,3 +6,4 @@ thefuzz[speedup]
 python-dateutil
 tenacity
 jinja2
+icalendar

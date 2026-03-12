@@ -8,7 +8,10 @@ KEYWORDS = [
     "AI", "ML", "Artificial Intelligence", "Machine Learning",
     "Data", "Engineering", "Creative Technologies", "Cloud",
     "Developer", "Coding", "Startup", "Hackathon",
-    "Deep Learning", "LLM", "GenAI", "DevOps", "Tech"
+    "Deep Learning", "LLM", "GenAI", "DevOps", "Tech",
+    "Kubernetes", "Docker", "Web3", "Cybersecurity", "UX",
+    "Product", "SaaS", "Open Source", "NLP", "Python",
+    "JavaScript", "React", "Robotics", "IoT", "FinTech",
 ]
 
 BERLIN_INDICATORS = [
