@@ -2,7 +2,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from src.config import KEYWORDS, BERLIN_INDICATORS, ONLINE_INDICATORS
+from src.config import KEYWORDS, BERLIN_INDICATORS, ONLINE_INDICATORS, ONLINE_LOCATION_EXACT
 from src.models import Event
 
 logger = logging.getLogger(__name__)
@@ -16,6 +16,11 @@ def is_in_berlin(event: Event) -> bool:
     for indicator in ONLINE_INDICATORS:
         if indicator in text:
             return False
+
+    # Reject if location is exactly "Online", "Virtual", etc.
+    loc_clean = event.location.strip().lower()
+    if loc_clean in ONLINE_LOCATION_EXACT:
+        return False
 
     # Check for Berlin indicators
     for indicator in BERLIN_INDICATORS:

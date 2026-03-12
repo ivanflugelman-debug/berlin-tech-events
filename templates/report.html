@@ -166,9 +166,6 @@
                             <a href="{{ event.url }}" target="_blank" rel="noopener">{{ event.title }}</a>
                             <span class="source-tag source-{{ event.source | replace('.', '-') }}">{{ event.source }}</span>
                         </div>
-                        {% if event.price == "Paid" %}
-                            <span class="badge badge-paid">Paid</span>
-                        {% endif %}
                     </div>
                     <div class="event-details">
                         {% if event.date %}<span>🕐 {{ event.date.strftime('%H:%M') }}</span>{% endif %}

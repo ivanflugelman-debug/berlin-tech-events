@@ -19,7 +19,12 @@ BERLIN_INDICATORS = [
     "Marzahn", "Hellersdorf"
 ]
 
-ONLINE_INDICATORS = ["online only", "virtual event", "remote only", "webinar", "online event"]
+ONLINE_INDICATORS = [
+    "online only", "virtual event", "remote only", "webinar", "online event",
+    "online-event", "virtual only", "zoom meeting", "livestream only",
+]
+
+ONLINE_LOCATION_EXACT = ["online", "virtual", "remote", "zoom", "online event"]
 
 SEARCH_QUERIES = [
     "tech events Berlin",
