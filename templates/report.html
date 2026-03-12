@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Berlin Tech Events — {{ mode | capitalize }}</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            line-height: 1.5;
+            padding: 1rem;
+        }
+        .container { max-width: 900px; margin: 0 auto; }
+        header {
+            text-align: center;
+            padding: 2rem 0 1rem;
+        }
+        header h1 { font-size: 1.8rem; margin-bottom: 0.25rem; }
+        .subtitle { color: #666; font-size: 0.95rem; }
+        .meta {
+            text-align: center;
+            color: #888;
+            font-size: 0.85rem;
+            margin-bottom: 1.5rem;
+        }
+        .toggle {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        .toggle a {
+            display: inline-block;
+            padding: 0.5rem 1.25rem;
+            margin: 0 0.25rem;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.9rem;
+            border: 2px solid #2563eb;
+            color: #2563eb;
+            transition: all 0.2s;
+        }
+        .toggle a.active {
+            background: #2563eb;
+            color: #fff;
+        }
+        .toggle a:hover:not(.active) {
+            background: #eff6ff;
+        }
+        .date-group h2 {
+            font-size: 1.1rem;
+            padding: 0.75rem 0 0.5rem;
+            border-bottom: 2px solid #e5e7eb;
+            margin-bottom: 0.75rem;
+            color: #1f2937;
+        }
+        .event-card {
+            background: #fff;
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 0.75rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            transition: box-shadow 0.2s;
+        }
+        .event-card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+        }
+        .event-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .event-title {
+            font-size: 1.05rem;
+            font-weight: 600;
+        }
+        .event-title a {
+            color: #1f2937;
+            text-decoration: none;
+        }
+        .event-title a:hover { color: #2563eb; }
+        .badge {
+            display: inline-block;
+            padding: 0.15rem 0.6rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .badge-free { background: #dcfce7; color: #166534; }
+        .badge-paid { background: #ffedd5; color: #9a3412; }
+        .badge-unknown { background: #f3f4f6; color: #6b7280; }
+        .event-details {
+            margin-top: 0.4rem;
+            font-size: 0.88rem;
+            color: #555;
+        }
+        .event-details span {
+            margin-right: 1rem;
+        }
+        .event-summary {
+            margin-top: 0.4rem;
+            font-size: 0.88rem;
+            color: #666;
+        }
+        .source-tag {
+            display: inline-block;
+            font-size: 0.7rem;
+            color: #999;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            margin-left: 0.5rem;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: #888;
+        }
+        footer {
+            text-align: center;
+            padding: 2rem 0;
+            color: #999;
+            font-size: 0.8rem;
+        }
+        @media (max-width: 640px) {
+            body { padding: 0.5rem; }
+            .event-header { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🗓 Berlin Tech Events</h1>
+            <p class="subtitle">{{ mode | capitalize }} view — {{ start_date }} to {{ end_date }}</p>
+        </header>
+
+        <div class="meta">
+            {{ total_events }} events found · Last updated {{ updated_at }}
+        </div>
+
+        <div class="toggle">
+            <a href="index.html" class="{{ 'active' if mode == 'weekly' }}">Weekly</a>
+            <a href="monthly.html" class="{{ 'active' if mode == 'monthly' }}">Monthly</a>
+        </div>
+
+        {% if events_by_date %}
+            {% for date_str, events in events_by_date %}
+            <div class="date-group">
+                <h2>{{ date_str }}</h2>
+                {% for event in events %}
+                <div class="event-card">
+                    <div class="event-header">
+                        <div class="event-title">
+                            <a href="{{ event.url }}" target="_blank" rel="noopener">{{ event.title }}</a>
+                            <span class="source-tag">{{ event.source }}</span>
+                        </div>
+                        {% if event.price == "Free" %}
+                            <span class="badge badge-free">Free</span>
+                        {% elif event.price == "Paid" %}
+                            <span class="badge badge-paid">Paid</span>
+                        {% else %}
+                            <span class="badge badge-unknown">{{ event.price }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="event-details">
+                        {% if event.date %}<span>🕐 {{ event.date.strftime('%H:%M') }}</span>{% endif %}
+                        {% if event.location %}<span>📍 {{ event.location }}</span>{% endif %}
+                        {% if event.organizer %}<span>👤 {{ event.organizer }}</span>{% endif %}
+                        {% if event.event_type %}<span>{{ event.event_type }}</span>{% endif %}
+                    </div>
+                    {% if event.summary %}
+                    <div class="event-summary">{{ event.summary }}</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">
+                <p>No events found for this period. Check back later!</p>
+            </div>
+        {% endif %}
+
+        <footer>
+            Berlin Tech Events Scraper · Auto-generated from {{ sources | length }} sources
+        </footer>
+    </div>
+</body>
+</html>
