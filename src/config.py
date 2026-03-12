@@ -25,9 +25,26 @@ BERLIN_INDICATORS = [
 ONLINE_INDICATORS = [
     "online only", "virtual event", "remote only", "webinar", "online event",
     "online-event", "virtual only", "zoom meeting", "livestream only",
+    "virtual networking", "virtual meetup", "virtual conference",
+    "virtual summit", "virtual workshop", "online meetup",
+    "online workshop", "online conference", "online summit",
+    "global virtual", "web-based", "digital event",
+    "live webinar", "online session", "virtual session",
 ]
 
-ONLINE_LOCATION_EXACT = ["online", "virtual", "remote", "zoom", "online event"]
+# Title patterns that strongly signal online-only (checked as whole words)
+ONLINE_TITLE_SIGNALS = [
+    "(online)", "[online]", "— online", "- online",
+    "(virtual)", "[virtual]", "— virtual", "- virtual",
+    "(webinar)", "[webinar]", "(zoom)", "[zoom]",
+    "(remote)", "[remote]",
+]
+
+ONLINE_LOCATION_EXACT = [
+    "online", "virtual", "remote", "zoom", "online event",
+    "virtual event", "webinar", "online only", "remote only",
+    "youtube", "twitch", "microsoft teams", "google meet",
+]
 
 SEARCH_QUERIES = [
     "tech events Berlin",
