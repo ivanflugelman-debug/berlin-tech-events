@@ -63,7 +63,15 @@ class SerpApiScraper(BaseScraper):
                 params["htichips"] = chip
 
             try:
-                resp = self._get("https://serpapi.com/search", params=params)
+                # Use requests directly — SerpAPI is a JSON API, not a website
+                import requests
+                resp = requests.get(
+                    "https://serpapi.com/search",
+                    params=params,
+                    timeout=15,
+                    headers={"Accept": "application/json"},
+                )
+                resp.raise_for_status()
                 data = resp.json()
             except Exception as e:
                 logger.error(f"SerpAPI query '{query}' (chip={chip}) failed: {e}")

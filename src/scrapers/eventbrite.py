@@ -73,8 +73,10 @@ class EventbriteScraper(BaseScraper):
                     self.SEARCH_API,
                     json=payload,
                     timeout=15,
+                    headers={"Accept": "application/json"},
                 )
                 if resp.status_code != 200:
+                    logger.debug(f"Eventbrite API {resp.status_code} for '{query}'")
                     continue
                 data = resp.json()
                 for item in data.get("events", {}).get("results", []):
