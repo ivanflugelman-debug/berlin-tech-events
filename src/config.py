@@ -35,9 +35,9 @@ def get_date_window(mode: str) -> tuple[datetime, datetime]:
     """Return (start, end) date window based on mode."""
     today = datetime.now()
     if mode == "weekly":
-        # Current week (Monday–Sunday) + next week
+        # Current week only (Monday–Sunday)
         start = today - timedelta(days=today.weekday())  # This Monday
-        end = start + timedelta(days=13)  # Through next Sunday
+        end = start + timedelta(days=6)  # This Sunday
     elif mode == "monthly":
         # Events for next 6 weeks starting tomorrow
         start = today + timedelta(days=1)
