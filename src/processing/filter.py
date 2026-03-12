@@ -1,6 +1,5 @@
 from __future__ import annotations
 import logging
-import re
 from datetime import datetime
 
 from src.config import KEYWORDS, BERLIN_INDICATORS, ONLINE_INDICATORS
@@ -28,7 +27,7 @@ def is_in_berlin(event: Event) -> bool:
 
 def matches_keywords(event: Event) -> bool:
     """Check if event matches any tech/AI keywords."""
-    text = f"{event.title} {event.summary} {event.event_type}".lower()
+    text = f"{event.title} {event.summary} {event.event_type} {event.organizer}".lower()
 
     for keyword in KEYWORDS:
         if keyword.lower() in text:
@@ -40,16 +39,27 @@ def matches_keywords(event: Event) -> bool:
 def filter_events(events: list[Event], start: datetime, end: datetime) -> list[Event]:
     """Filter events by location, keywords, and date window."""
     filtered = []
+    skipped_date = 0
+    skipped_location = 0
+    skipped_keyword = 0
+
     for event in events:
         if event.date < start or event.date > end:
+            skipped_date += 1
+            logger.info(f"Filtered (date {event.date.date()}): {event.title}")
             continue
         if not is_in_berlin(event):
-            logger.debug(f"Filtered out (not Berlin): {event.title}")
+            skipped_location += 1
+            logger.info(f"Filtered (not Berlin): {event.title} | loc={event.location}")
             continue
         if not matches_keywords(event):
-            logger.debug(f"Filtered out (no keyword match): {event.title}")
+            skipped_keyword += 1
+            logger.info(f"Filtered (no keyword): {event.title}")
             continue
         filtered.append(event)
 
-    logger.info(f"Filtered {len(events)} → {len(filtered)} events")
+    logger.info(
+        f"Filter: {len(events)} total → {len(filtered)} kept "
+        f"(dropped: {skipped_date} date, {skipped_location} location, {skipped_keyword} keyword)"
+    )
     return filtered

@@ -2,6 +2,8 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
+from dateutil import parser as dateparser
+
 from src.config import SERPAPI_KEY, SEARCH_QUERIES
 from src.models import Event
 from src.scrapers.base import BaseScraper
@@ -29,38 +31,56 @@ class SerpApiScraper(BaseScraper):
 
     def _search_events(self, query: str, start: datetime, end: datetime) -> list[Event]:
         """Search Google Events via SerpAPI for a single query."""
-        params = {
-            "engine": "google_events",
-            "q": query,
-            "api_key": self.api_key,
-            "hl": "en",
-            "gl": "de",
-        }
+        # Try different date chips: "This week", "Next week", "This month"
+        date_chips = [
+            "date:next_week",
+            "date:this_month",
+            "date:next_month",
+            "",  # no filter
+        ]
 
-        try:
-            resp = self._get("https://serpapi.com/search", params=params)
-            data = resp.json()
-        except Exception as e:
-            logger.error(f"SerpAPI query '{query}' failed: {e}")
-            return []
+        all_events = []
+        for chip in date_chips:
+            params = {
+                "engine": "google_events",
+                "q": query,
+                "api_key": self.api_key,
+                "hl": "en",
+                "gl": "de",
+            }
+            if chip:
+                params["htichips"] = chip
 
-        events = []
-        for item in data.get("events_results", []):
-            event = self._parse_event(item, start, end)
-            if event:
-                events.append(event)
-        return events
+            try:
+                resp = self._get("https://serpapi.com/search", params=params)
+                data = resp.json()
+            except Exception as e:
+                logger.error(f"SerpAPI query '{query}' (chip={chip}) failed: {e}")
+                continue
+
+            for item in data.get("events_results", []):
+                event = self._parse_event(item, start, end)
+                if event:
+                    all_events.append(event)
+
+            # If we got results, don't try other chips (save API quota)
+            if all_events:
+                break
+
+        return all_events
 
     def _parse_event(self, item: dict, start: datetime, end: datetime) -> Event | None:
         """Parse a single event from SerpAPI response."""
-        from dateutil import parser as dateparser
-
         title = item.get("title", "")
         link = item.get("link", "")
 
         # Parse date
         date_info = item.get("date", {})
-        when = date_info.get("start_date") or date_info.get("when", "")
+        if isinstance(date_info, dict):
+            when = date_info.get("start_date") or date_info.get("when", "")
+        else:
+            when = str(date_info)
+
         if not when:
             return None
 
@@ -71,9 +91,8 @@ class SerpApiScraper(BaseScraper):
         except (ValueError, TypeError):
             return None
 
-        # Check date window
-        if dt < start or dt > end:
-            return None
+        # Don't filter by date here — let the filter step handle it
+        # This way we collect all events and the filter decides
 
         # Location
         address_parts = item.get("address", [])
