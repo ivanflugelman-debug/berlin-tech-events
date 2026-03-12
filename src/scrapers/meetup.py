@@ -3,6 +3,7 @@ import json
 import logging
 from datetime import datetime
 
+from bs4 import BeautifulSoup
 from dateutil import parser as dateparser
 
 from src.models import Event
@@ -10,133 +11,121 @@ from src.scrapers.base import BaseScraper
 
 logger = logging.getLogger(__name__)
 
+# Berlin coordinates
+BERLIN_LAT = 52.52
+BERLIN_LON = 13.405
+
 
 class MeetupScraper(BaseScraper):
     name = "meetup"
 
-    GRAPHQL_URL = "https://www.meetup.com/gql"
-
     SEARCH_KEYWORDS = ["tech", "AI", "startup", "developer", "data", "machine learning",
-                        "software engineering", "coding", "hackathon", "cloud"]
+                        "software", "coding", "hackathon", "cloud", "devops"]
 
     def scrape(self, start: datetime, end: datetime) -> list[Event]:
         all_events = []
+        seen_urls = set()
         for keyword in self.SEARCH_KEYWORDS:
-            events = self._search_graphql(keyword, start, end)
-            all_events.extend(events)
+            events = self._search(keyword, start, end)
+            for event in events:
+                if event.url not in seen_urls:
+                    all_events.append(event)
+                    seen_urls.add(event.url)
         return all_events
 
-    def _search_graphql(self, keyword: str, start: datetime, end: datetime) -> list[Event]:
-        """Use Meetup's GraphQL API to search events."""
-        query = """
-        query($query: String!, $lat: Float!, $lon: Float!, $startDateRange: DateTime, $endDateRange: DateTime) {
-          rankedEvents(filter: {
-            query: $query,
-            lat: $lat,
-            lon: $lon,
-            radius: 30,
-            startDateRange: $startDateRange,
-            endDateRange: $endDateRange
-          }, first: 50) {
-            edges {
-              node {
-                title
-                dateTime
-                endTime
-                eventUrl
-                description
-                venue {
-                  name
-                  address
-                  city
-                }
-                group {
-                  name
-                }
-                feeSettings {
-                  amount
-                  currency
-                }
-                eventType
-              }
-            }
-          }
+    def _search(self, keyword: str, start: datetime, end: datetime) -> list[Event]:
+        """Search Meetup events using their search page with lat/lon parameters."""
+        params = {
+            "keywords": keyword,
+            "location": "Berlin, Germany",
+            "source": "EVENTS",
+            "lat": str(BERLIN_LAT),
+            "lon": str(BERLIN_LON),
+            "radius": "25",  # 25 miles around Berlin
         }
-        """
-        variables = {
-            "query": keyword,
-            "lat": 52.52,  # Berlin
-            "lon": 13.405,
-            "startDateRange": start.isoformat(),
-            "endDateRange": end.isoformat(),
-        }
+        try:
+            resp = self._get("https://www.meetup.com/find/", params=params)
+        except Exception as e:
+            logger.error(f"Meetup search '{keyword}' failed: {e}")
+            return []
+
+        soup = BeautifulSoup(resp.text, "lxml")
+        events = []
+
+        # Parse JSON-LD structured data
+        for script in soup.find_all("script", type="application/ld+json"):
+            try:
+                data = json.loads(script.string)
+                items = data if isinstance(data, list) else [data]
+                for item in items:
+                    if item.get("@type") in ("Event", "SocialEvent", "BusinessEvent"):
+                        event = self._parse_jsonld(item)
+                        if event:
+                            events.append(event)
+            except (json.JSONDecodeError, Exception):
+                continue
+
+        # Also try to parse the __NEXT_DATA__ for React-rendered content
+        if not events:
+            events = self._parse_next_data(soup)
+
+        logger.debug(f"Meetup '{keyword}': found {len(events)} events")
+        return events
+
+    def _parse_next_data(self, soup: BeautifulSoup) -> list[Event]:
+        """Parse Meetup's Next.js data."""
+        events = []
+        script = soup.find("script", id="__NEXT_DATA__")
+        if not script or not script.string:
+            return events
 
         try:
-            resp = self.session.post(
-                self.GRAPHQL_URL,
-                json={"query": query, "variables": variables},
-                headers={
-                    **self.session.headers,
-                    "Content-Type": "application/json",
-                },
-                timeout=30,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception as e:
-            logger.error(f"Meetup GraphQL search '{keyword}' failed: {e}")
-            # Fallback to HTML scraping
-            return self._search_html(keyword, start, end)
+            data = json.loads(script.string)
+            props = data.get("props", {}).get("pageProps", {})
 
-        events = []
-        ranked = data.get("data", {}).get("rankedEvents", {})
-        edges = ranked.get("edges", []) if ranked else []
-
-        for edge in edges:
-            node = edge.get("node", {})
-            event = self._parse_graphql_event(node, start, end)
-            if event:
-                events.append(event)
-
-        if not events:
-            # Fallback to HTML scraping
-            return self._search_html(keyword, start, end)
+            # Navigate to events in the data structure
+            for key in ("results", "events", "searchResults"):
+                results = props.get(key)
+                if results:
+                    items = results if isinstance(results, list) else []
+                    if isinstance(results, dict):
+                        items = results.get("edges", results.get("items", results.get("events", [])))
+                    for item in items:
+                        node = item.get("node", item) if isinstance(item, dict) else item
+                        event = self._parse_next_event(node)
+                        if event:
+                            events.append(event)
+        except (json.JSONDecodeError, Exception) as e:
+            logger.debug(f"Meetup __NEXT_DATA__ parse error: {e}")
 
         return events
 
-    def _parse_graphql_event(self, node: dict, start: datetime, end: datetime) -> Event | None:
-        title = node.get("title", "")
-        url = node.get("eventUrl", "")
+    def _parse_next_event(self, node: dict) -> Event | None:
+        if not isinstance(node, dict):
+            return None
 
-        dt_str = node.get("dateTime", "")
+        title = node.get("title", "") or node.get("name", "")
+        url = node.get("eventUrl", "") or node.get("link", "")
+        if not title or not url:
+            return None
+
+        dt_str = node.get("dateTime", "") or node.get("startDate", "")
         if not dt_str:
             return None
 
         try:
-            dt = dateparser.parse(dt_str)
+            dt = dateparser.parse(str(dt_str))
             if dt is None:
                 return None
         except (ValueError, TypeError):
             return None
 
         venue = node.get("venue", {}) or {}
-        venue_name = venue.get("name", "")
-        venue_city = venue.get("city", "")
-        venue_addr = venue.get("address", "")
-        parts = [p for p in [venue_name, venue_addr, venue_city] if p]
-        location = ", ".join(parts) if parts else ""
+        parts = [p for p in [venue.get("name", ""), venue.get("city", "")] if p]
+        location = ", ".join(parts)
 
         group = node.get("group", {}) or {}
         organizer = group.get("name", "")
-
-        fee = node.get("feeSettings", {}) or {}
-        amount = fee.get("amount", None)
-        if amount is None or amount == 0:
-            price = "Free"
-        else:
-            price = "Paid"
-
-        summary = node.get("description", "") or ""
 
         return Event(
             title=title,
@@ -145,45 +134,11 @@ class MeetupScraper(BaseScraper):
             source=self.name,
             location=location,
             organizer=organizer,
-            summary=summary[:300],
-            event_type=node.get("eventType", ""),
-            price=price,
+            summary=(node.get("description", "") or "")[:300],
+            price="Unknown",
         )
 
-    def _search_html(self, keyword: str, start: datetime, end: datetime) -> list[Event]:
-        """Fallback: scrape Meetup search results page."""
-        from bs4 import BeautifulSoup
-
-        params = {
-            "keywords": keyword,
-            "location": "Berlin, Germany",
-            "source": "EVENTS",
-        }
-        try:
-            resp = self._get(f"https://www.meetup.com/find/", params=params)
-        except Exception as e:
-            logger.error(f"Meetup HTML search '{keyword}' failed: {e}")
-            return []
-
-        soup = BeautifulSoup(resp.text, "lxml")
-        events = []
-
-        # Try JSON-LD
-        for script in soup.find_all("script", type="application/ld+json"):
-            try:
-                data = json.loads(script.string)
-                items = data if isinstance(data, list) else [data]
-                for item in items:
-                    if item.get("@type") in ("Event", "SocialEvent", "BusinessEvent"):
-                        event = self._parse_jsonld(item, start, end)
-                        if event:
-                            events.append(event)
-            except (json.JSONDecodeError, Exception):
-                continue
-
-        return events
-
-    def _parse_jsonld(self, data: dict, start: datetime, end: datetime) -> Event | None:
+    def _parse_jsonld(self, data: dict) -> Event | None:
         title = data.get("name", "")
         url = data.get("url", "")
 
