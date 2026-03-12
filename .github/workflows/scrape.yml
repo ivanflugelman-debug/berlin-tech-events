@@ -2,18 +2,8 @@ name: Scrape Berlin Tech Events
 
 on:
   schedule:
-    - cron: '0 8 * * 1'    # Weekly: Monday 8am UTC
-    - cron: '0 8 1 * *'    # Monthly: 1st of month 8am UTC
-  workflow_dispatch:
-    inputs:
-      mode:
-        description: 'Report mode'
-        required: false
-        default: 'weekly'
-        type: choice
-        options:
-          - weekly
-          - monthly
+    - cron: '0 8 * * 1'    # Every Monday 8am UTC
+  workflow_dispatch: {}      # Manual trigger
 
 permissions:
   contents: write
@@ -32,21 +22,12 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Determine mode
-        id: mode
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "mode=${{ github.event.inputs.mode || 'weekly' }}" >> "$GITHUB_OUTPUT"
-          elif [ "$(date +%d)" = "01" ]; then
-            echo "mode=monthly" >> "$GITHUB_OUTPUT"
-          else
-            echo "mode=weekly" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Run scraper
+      - name: Run scraper (both views)
         env:
           SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
-        run: python -m src.main --mode ${{ steps.mode.outputs.mode }}
+        run: |
+          python -m src.main --mode weekly
+          python -m src.main --mode monthly
 
       - name: Commit and push results
         run: |
@@ -56,7 +37,7 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Update events (${{ steps.mode.outputs.mode }} — $(date -u +%Y-%m-%d))"
+            git commit -m "Update events ($(date -u +%Y-%m-%d))"
             git pull --rebase
             git push
           fi
