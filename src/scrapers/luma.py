@@ -18,8 +18,7 @@ class LumaScraper(BaseScraper):
     DISCOVER_URL = "https://lu.ma/berlin"
     SEARCH_URLS = [
         "https://lu.ma/berlin",
-        "https://lu.ma/berlin-tech",
-        "https://lu.ma/berlin-ai",
+        "https://lu.ma/discover?loc=Berlin",
     ]
 
     def scrape(self, start: datetime, end: datetime) -> list[Event]:

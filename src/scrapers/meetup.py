@@ -11,48 +11,98 @@ from src.scrapers.base import BaseScraper
 
 logger = logging.getLogger(__name__)
 
-# Berlin coordinates
-BERLIN_LAT = 52.52
-BERLIN_LON = 13.405
-
 
 class MeetupScraper(BaseScraper):
     name = "meetup"
 
-    SEARCH_KEYWORDS = ["tech", "AI", "startup", "developer", "data", "machine learning",
-                        "software", "coding", "hackathon", "cloud", "devops"]
+    # Known Berlin tech meetup groups — these pages are public and location-stable
+    BERLIN_GROUPS = [
+        "berlin-ai-ml-meetup",
+        "berlindatascience",
+        "Berlin-Hack-and-Tell",
+        "berlin-js",
+        "berlin-python",
+        "berlintechmeetups",
+        "BerlinStartupJobs",
+        "berlin-devops",
+        "Berlin-Developers",
+        "React-Berlin",
+        "TypeScript-Berlin",
+        "Berlin-Rust-Meetup",
+        "golang-users-berlin",
+        "Women-Techmakers-Berlin",
+        "PyData-Berlin",
+        "Berlin-Machine-Learning",
+        "Cloud-Native-Computing-Berlin",
+        "Berlin-CTO",
+        "DevOps-Berlin",
+        "OpenAI-Berlin",
+        "Berlin-Generative-AI",
+        "berlin-product-people",
+        "Creative-Code-Berlin",
+        "Data-Engineering-Berlin",
+        "Berlin-Kotlin-Meetup",
+        "AWS-Berlin",
+        "Apache-Kafka-Berlin",
+        "Berlin-Functional-Programming-Group",
+        "GraphQL-Berlin",
+    ]
+
+    # Also search the general events page for Berlin
+    SEARCH_URL = "https://www.meetup.com/find/?keywords={keyword}&location=de--Berlin&source=EVENTS"
+
+    SEARCH_KEYWORDS = ["tech", "AI", "startup", "developer", "data", "hackathon"]
 
     def scrape(self, start: datetime, end: datetime) -> list[Event]:
         all_events = []
         seen_urls = set()
-        for keyword in self.SEARCH_KEYWORDS:
-            events = self._search(keyword, start, end)
+
+        # 1. Scrape known Berlin tech groups
+        for group in self.BERLIN_GROUPS:
+            events = self._scrape_group(group)
             for event in events:
                 if event.url not in seen_urls:
                     all_events.append(event)
                     seen_urls.add(event.url)
+
+        # 2. Also try keyword search
+        for keyword in self.SEARCH_KEYWORDS:
+            events = self._search_keyword(keyword)
+            for event in events:
+                if event.url not in seen_urls:
+                    all_events.append(event)
+                    seen_urls.add(event.url)
+
         return all_events
 
-    def _search(self, keyword: str, start: datetime, end: datetime) -> list[Event]:
-        """Search Meetup events using their search page with lat/lon parameters."""
-        params = {
-            "keywords": keyword,
-            "location": "Berlin, Germany",
-            "source": "EVENTS",
-            "lat": str(BERLIN_LAT),
-            "lon": str(BERLIN_LON),
-            "radius": "25",  # 25 miles around Berlin
-        }
+    def _scrape_group(self, group_slug: str) -> list[Event]:
+        """Scrape upcoming events from a specific Meetup group page."""
+        url = f"https://www.meetup.com/{group_slug}/events/"
         try:
-            resp = self._get("https://www.meetup.com/find/", params=params)
+            resp = self._get(url)
         except Exception as e:
-            logger.error(f"Meetup search '{keyword}' failed: {e}")
+            logger.debug(f"Meetup group '{group_slug}' failed: {e}")
             return []
 
-        soup = BeautifulSoup(resp.text, "lxml")
+        return self._parse_page(resp.text, group_slug)
+
+    def _search_keyword(self, keyword: str) -> list[Event]:
+        """Search Meetup for Berlin events by keyword."""
+        url = self.SEARCH_URL.format(keyword=keyword)
+        try:
+            resp = self._get(url)
+        except Exception as e:
+            logger.debug(f"Meetup search '{keyword}' failed: {e}")
+            return []
+
+        return self._parse_page(resp.text, f"search:{keyword}")
+
+    def _parse_page(self, html: str, source_label: str) -> list[Event]:
+        """Parse events from a Meetup page (group or search results)."""
+        soup = BeautifulSoup(html, "lxml")
         events = []
 
-        # Parse JSON-LD structured data
+        # Try JSON-LD
         for script in soup.find_all("script", type="application/ld+json"):
             try:
                 data = json.loads(script.string)
@@ -65,45 +115,46 @@ class MeetupScraper(BaseScraper):
             except (json.JSONDecodeError, Exception):
                 continue
 
-        # Also try to parse the __NEXT_DATA__ for React-rendered content
+        # Try __NEXT_DATA__
         if not events:
-            events = self._parse_next_data(soup)
+            next_script = soup.find("script", id="__NEXT_DATA__")
+            if next_script and next_script.string:
+                try:
+                    data = json.loads(next_script.string)
+                    events = self._extract_from_next_data(data)
+                except (json.JSONDecodeError, Exception) as e:
+                    logger.debug(f"Meetup __NEXT_DATA__ ({source_label}): {e}")
 
-        logger.debug(f"Meetup '{keyword}': found {len(events)} events")
         return events
 
-    def _parse_next_data(self, soup: BeautifulSoup) -> list[Event]:
-        """Parse Meetup's Next.js data."""
+    def _extract_from_next_data(self, data: dict) -> list[Event]:
+        """Recursively find event-like objects in __NEXT_DATA__."""
         events = []
-        script = soup.find("script", id="__NEXT_DATA__")
-        if not script or not script.string:
-            return events
 
-        try:
-            data = json.loads(script.string)
-            props = data.get("props", {}).get("pageProps", {})
+        def walk(obj, depth=0):
+            if depth > 10 or not isinstance(obj, (dict, list)):
+                return
+            if isinstance(obj, list):
+                for item in obj:
+                    walk(item, depth + 1)
+                return
+            # Check if this dict looks like an event
+            if "title" in obj and ("dateTime" in obj or "eventUrl" in obj):
+                event = self._parse_next_event(obj)
+                if event:
+                    events.append(event)
+            elif "name" in obj and "startDate" in obj and "url" in obj:
+                event = self._parse_jsonld(obj)
+                if event:
+                    events.append(event)
+            # Recurse into values
+            for val in obj.values():
+                walk(val, depth + 1)
 
-            # Navigate to events in the data structure
-            for key in ("results", "events", "searchResults"):
-                results = props.get(key)
-                if results:
-                    items = results if isinstance(results, list) else []
-                    if isinstance(results, dict):
-                        items = results.get("edges", results.get("items", results.get("events", [])))
-                    for item in items:
-                        node = item.get("node", item) if isinstance(item, dict) else item
-                        event = self._parse_next_event(node)
-                        if event:
-                            events.append(event)
-        except (json.JSONDecodeError, Exception) as e:
-            logger.debug(f"Meetup __NEXT_DATA__ parse error: {e}")
-
+        walk(data)
         return events
 
     def _parse_next_event(self, node: dict) -> Event | None:
-        if not isinstance(node, dict):
-            return None
-
         title = node.get("title", "") or node.get("name", "")
         url = node.get("eventUrl", "") or node.get("link", "")
         if not title or not url:
@@ -127,20 +178,29 @@ class MeetupScraper(BaseScraper):
         group = node.get("group", {}) or {}
         organizer = group.get("name", "")
 
+        fee = node.get("feeSettings") or {}
+        if isinstance(fee, dict):
+            amount = fee.get("amount", None)
+            price = "Paid" if amount and amount > 0 else "Free"
+        else:
+            price = "Unknown"
+
         return Event(
             title=title,
             date=dt,
             url=url,
             source=self.name,
-            location=location,
+            location=location if location else "Berlin",
             organizer=organizer,
             summary=(node.get("description", "") or "")[:300],
-            price="Unknown",
+            price=price,
         )
 
     def _parse_jsonld(self, data: dict) -> Event | None:
         title = data.get("name", "")
         url = data.get("url", "")
+        if not title:
+            return None
 
         try:
             dt = dateparser.parse(data.get("startDate", ""))
@@ -180,7 +240,7 @@ class MeetupScraper(BaseScraper):
             date=dt,
             url=url,
             source=self.name,
-            location=location,
+            location=location if location else "Berlin",
             organizer=organizer,
             summary=data.get("description", "")[:300],
             price=price,
