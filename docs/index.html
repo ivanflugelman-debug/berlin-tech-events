@@ -49,6 +49,39 @@
         .toggle a:hover:not(.active) {
             background: #eff6ff;
         }
+        /* Search bar */
+        .search-bar {
+            max-width: 500px;
+            margin: 0 auto 1.5rem;
+            position: relative;
+        }
+        .search-bar input {
+            width: 100%;
+            padding: 0.6rem 1rem 0.6rem 2.5rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .search-bar input:focus {
+            border-color: #2563eb;
+        }
+        .search-bar::before {
+            content: "\1F50D";
+            position: absolute;
+            left: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 1rem;
+        }
+        .search-count {
+            text-align: center;
+            color: #888;
+            font-size: 0.8rem;
+            margin-bottom: 1rem;
+            display: none;
+        }
         .date-group h2 {
             font-size: 1.1rem;
             padding: 0.75rem 0 0.5rem;
@@ -67,6 +100,7 @@
         .event-card:hover {
             box-shadow: 0 2px 8px rgba(0,0,0,0.12);
         }
+        .event-card.hidden { display: none; }
         .event-header {
             display: flex;
             align-items: flex-start;
@@ -77,12 +111,19 @@
         .event-title {
             font-size: 1.05rem;
             font-weight: 600;
+            flex: 1;
         }
         .event-title a {
             color: #1f2937;
             text-decoration: none;
         }
         .event-title a:hover { color: #2563eb; }
+        .event-actions {
+            display: flex;
+            gap: 0.4rem;
+            align-items: center;
+            flex-shrink: 0;
+        }
         .badge {
             display: inline-block;
             padding: 0.15rem 0.6rem;
@@ -94,6 +135,18 @@
         .badge-free { background: #dcfce7; color: #166534; }
         .badge-paid { background: #ffedd5; color: #9a3412; }
         .badge-unknown { background: #f3f4f6; color: #6b7280; }
+        .cal-link {
+            display: inline-block;
+            font-size: 0.7rem;
+            font-weight: 500;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            background: #eff6ff;
+            color: #2563eb;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+        .cal-link:hover { background: #dbeafe; }
         .event-details {
             margin-top: 0.4rem;
             font-size: 0.88rem;
@@ -122,6 +175,11 @@
         .source-serpapi { background: #dcfce7; color: #16a34a; }
         .source-berlin-de { background: #fef9c3; color: #a16207; }
         .source-ai-berlin { background: #cffafe; color: #0891b2; }
+        .source-sibb { background: #ccfbf1; color: #0d9488; }
+        .source-dev-events { background: #fef3c7; color: #d97706; }
+        .source-c-base { background: #e0e7ff; color: #4f46e5; }
+        .source-visitberlin { background: #fce7f3; color: #db2777; }
+        .source-ihk-berlin { background: #d1fae5; color: #059669; }
         .empty-state {
             text-align: center;
             padding: 3rem;
@@ -133,21 +191,44 @@
             color: #999;
             font-size: 0.8rem;
         }
+        .source-stats {
+            margin-top: 0.75rem;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        .source-stat {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-size: 0.75rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            background: #f3f4f6;
+        }
+        .source-stat .count {
+            font-weight: 700;
+        }
+        .source-stat.has-error {
+            opacity: 0.5;
+        }
         @media (max-width: 640px) {
             body { padding: 0.5rem; }
             .event-header { flex-direction: column; }
+            .event-actions { margin-top: 0.25rem; }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🗓 Berlin Tech Events</h1>
+            <h1>Berlin Tech Events</h1>
             <p class="subtitle">Weekly view — Mar 09 to Mar 15, 2026</p>
         </header>
 
         <div class="meta">
-            11 events found · Last updated 2026-03-12 16:10 UTC
+            11 events found · Last updated 2026-03-12 16:42 UTC
         </div>
 
         <div class="toggle">
@@ -155,65 +236,47 @@
             <a href="monthly.html" class="">Monthly</a>
         </div>
 
+        <div class="search-bar">
+            <input type="text" id="searchInput" placeholder="Filter events by title, location, or organizer..." autocomplete="off">
+        </div>
+        <div class="search-count" id="searchCount"></div>
+
         
             
             <div class="date-group">
                 <h2>Thursday, March 12, 2026</h2>
                 
-                <div class="event-card">
+                <div class="event-card" data-search="12.03.2026women in ai x ml6 meet-upevening event on bridging ai research and industrial application at merantix ai campus.more berlin ">
                     <div class="event-header">
                         <div class="event-title">
-                            <a href="https://www.meetup.com/python-users-berlin-pub/events/313518889/" target="_blank" rel="noopener">Presentation Night: CorrealAid&#39;s Call for Data Science Volunteers</a>
-                            <span class="source-tag source-meetup">meetup</span>
+                            <a href="https://ai-berlin.com/events-tiles/event/women-in-ai-x-ml6-meet-up" target="_blank" rel="noopener">12.03.2026Women in AI x ML6 Meet-UpEvening event on bridging AI research and industrial application at Merantix AI Campus.More</a>
+                            <span class="source-tag source-ai-berlin">ai-berlin</span>
+                        </div>
+                        <div class="event-actions">
+                            
+                            <a class="cal-link" target="_blank" rel="noopener"
+                               href="https://www.google.com/calendar/render?action=TEMPLATE&text=12.03.2026Women%20in%20AI%20x%20ML6%20Meet-UpEvening%20event%20on%20bridging%20AI%20research%20and%20industrial%20application%20at%20Merantix%20AI%20Campus.More&dates=20260312T000000/20260312T000000&location=Berlin&details=https%3A//ai-berlin.com/events-tiles/event/women-in-ai-x-ml6-meet-up">+ Cal</a>
                         </div>
                     </div>
                     <div class="event-details">
-                        <span>🕐 17:15</span>
-                        <span>📍 workish.berlin, Berlin</span>
-                        <span>👤 Python Users Berlin (PUB)</span>
+                        <span>🕐 00:00</span>
+                        <span>📍 Berlin</span>
+                        
                         
                     </div>
                     
-                    <div class="event-summary">Agenda
-
-* 18:15 Welcome to the PUB (Python Users Berlin) – setting up
-* 18:30 Presentation by CorrealAid
-* 20:30 Lightning talks
-* 20:45 Social gathering (hang out afterwards to chat)
-
-The Python User Group will be joined by the CorrelAid Berlin Local Chapter to present an upcoming opportunity for v</div>
-                    
                 </div>
                 
-                <div class="event-card">
-                    <div class="event-header">
-                        <div class="event-title">
-                            <a href="https://www.meetup.com/domain-driven-design-berlin/events/313205756/" target="_blank" rel="noopener">There Must Be a Lilac: EventStorming with Alberto Brandolini</a>
-                            <span class="source-tag source-meetup">meetup</span>
-                        </div>
-                    </div>
-                    <div class="event-details">
-                        <span>🕐 18:00</span>
-                        <span>📍 ThoughtWorks Berlin Event Space, Berlin</span>
-                        <span>👤 Domain Driven Design Berlin Meetup</span>
-                        
-                    </div>
-                    
-                    <div class="event-summary">He&#39;s back! The inventor of EventStorming is once again joining the Berlin Collaborative Modeling Meetup for an evening of massive learning, massive laughter, and no doubt a massive number of sticky notes.
-
-Here is the agenda:
-
-**Collaborative Reverse Roadmapping**
-
-We&#39;ll put future events on a timel</div>
-                    
-                </div>
-                
-                <div class="event-card">
+                <div class="event-card" data-search="march 12th, clojure+elixir communities invite to bobkonf pre-event-drinks volksbar, 10178 berlin elixir berlin">
                     <div class="event-header">
                         <div class="event-title">
                             <a href="https://www.meetup.com/elixir-berlin/events/313600065/" target="_blank" rel="noopener">March 12th, Clojure+Elixir communities invite to BOBKONF pre-event-drinks</a>
                             <span class="source-tag source-meetup">meetup</span>
+                        </div>
+                        <div class="event-actions">
+                            
+                            <a class="cal-link" target="_blank" rel="noopener"
+                               href="https://www.google.com/calendar/render?action=TEMPLATE&text=March%2012th%2C%20Clojure%2BElixir%20communities%20invite%20to%20BOBKONF%20pre-event-drinks&dates=20260312T183000/20260312T183000&location=Volksbar%2C%2010178%20Berlin&details=https%3A//www.meetup.com/elixir-berlin/events/313600065/">+ Cal</a>
                         </div>
                     </div>
                     <div class="event-details">
@@ -231,11 +294,16 @@ We&#39;re meeting at the Vo</div>
                     
                 </div>
                 
-                <div class="event-card">
+                <div class="event-card" data-search="meet up francophone mitte hotel motel one berlin-spittelmarkt, berlin francophones de berlin">
                     <div class="event-header">
                         <div class="event-title">
                             <a href="https://www.meetup.com/francophones-de-berlin/events/313450879/" target="_blank" rel="noopener">Meet up francophone MITTE</a>
                             <span class="source-tag source-meetup">meetup</span>
+                        </div>
+                        <div class="event-actions">
+                            
+                            <a class="cal-link" target="_blank" rel="noopener"
+                               href="https://www.google.com/calendar/render?action=TEMPLATE&text=Meet%20up%20francophone%20MITTE&dates=20260312T183000/20260312T183000&location=Hotel%20Motel%20One%20Berlin-Spittelmarkt%2C%20Berlin&details=https%3A//www.meetup.com/francophones-de-berlin/events/313450879/">+ Cal</a>
                         </div>
                     </div>
                     <div class="event-details">
@@ -251,11 +319,16 @@ A bientôt!</div>
                     
                 </div>
                 
-                <div class="event-card">
+                <div class="event-card" data-search="march 12 - agents, mcp and skills virtual meetup berlin berlin ai machine learning and computer vision meetup">
                     <div class="event-header">
                         <div class="event-title">
                             <a href="https://www.meetup.com/berlin-ai-machine-learning-and-computer-vision-meetup/events/313284598/" target="_blank" rel="noopener">March 12 - Agents, MCP and Skills Virtual Meetup</a>
                             <span class="source-tag source-meetup">meetup</span>
+                        </div>
+                        <div class="event-actions">
+                            
+                            <a class="cal-link" target="_blank" rel="noopener"
+                               href="https://www.google.com/calendar/render?action=TEMPLATE&text=March%2012%20-%20Agents%2C%20MCP%20and%20Skills%20Virtual%20Meetup&dates=20260312T190000/20260312T190000&location=Berlin&details=https%3A//www.meetup.com/berlin-ai-machine-learning-and-computer-vision-meetup/events/313284598/">+ Cal</a>
                         </div>
                     </div>
                     <div class="event-details">
@@ -282,11 +355,16 @@ Online. **[Register for the Zoom!](https://voxel51.com/events/mcp-and-skills-mee
             <div class="date-group">
                 <h2>Friday, March 13, 2026</h2>
                 
-                <div class="event-card">
+                <div class="event-card" data-search="berlin startup stipendium for early stage funding – how to apply berlin 🚀 berlin digital business network @sibb 🦄">
                     <div class="event-header">
                         <div class="event-title">
                             <a href="https://www.meetup.com/berlin-digital-business-network-sibb/events/313711504/" target="_blank" rel="noopener">Berlin Startup Stipendium for early stage funding – How to apply</a>
                             <span class="source-tag source-meetup">meetup</span>
+                        </div>
+                        <div class="event-actions">
+                            
+                            <a class="cal-link" target="_blank" rel="noopener"
+                               href="https://www.google.com/calendar/render?action=TEMPLATE&text=Berlin%20Startup%20Stipendium%20for%20early%20stage%20funding%20%E2%80%93%20How%20to%20apply&dates=20260313T101500/20260313T101500&location=Berlin&details=https%3A//www.meetup.com/berlin-digital-business-network-sibb/events/313711504/">+ Cal</a>
                         </div>
                     </div>
                     <div class="event-details">
@@ -304,11 +382,16 @@ Online. **[Register for the Zoom!](https://voxel51.com/events/mcp-and-skills-mee
                     
                 </div>
                 
-                <div class="event-card">
+                <div class="event-card" data-search="global build-a-thon hack! berlin microsoft reactor berlin pop-up">
                     <div class="event-header">
                         <div class="event-title">
                             <a href="https://www.meetup.com/microsoft-reactor-berlin/events/313227145/" target="_blank" rel="noopener">Global Build-a-thon Hack!</a>
                             <span class="source-tag source-meetup">meetup</span>
+                        </div>
+                        <div class="event-actions">
+                            
+                            <a class="cal-link" target="_blank" rel="noopener"
+                               href="https://www.google.com/calendar/render?action=TEMPLATE&text=Global%20Build-a-thon%20Hack%21&dates=20260313T150000/20260313T150000&location=Berlin&details=https%3A//www.meetup.com/microsoft-reactor-berlin/events/313227145/">+ Cal</a>
                         </div>
                     </div>
                     <div class="event-details">
@@ -329,11 +412,41 @@ We’ll walk through the hackathon theme, structure, timelines, and judging crit
             <div class="date-group">
                 <h2>Sunday, March 15, 2026</h2>
                 
-                <div class="event-card">
+                <div class="event-card" data-search="dmx voodoo c-base, berlin ">
+                    <div class="event-header">
+                        <div class="event-title">
+                            <a href="https://c-base.org/calendar/ee1cd21d-cd25-4d3b-a6d2-36fbf14329e4" target="_blank" rel="noopener">DMX Voodoo</a>
+                            <span class="source-tag source-c-base">c-base</span>
+                        </div>
+                        <div class="event-actions">
+                            
+                            <a class="cal-link" target="_blank" rel="noopener"
+                               href="https://www.google.com/calendar/render?action=TEMPLATE&text=DMX%20Voodoo&dates=20260315T000000/20260316T000000&location=c-base%2C%20Berlin&details=https%3A//c-base.org/calendar/ee1cd21d-cd25-4d3b-a6d2-36fbf14329e4">+ Cal</a>
+                        </div>
+                    </div>
+                    <div class="event-details">
+                        <span>🕐 00:00</span>
+                        <span>📍 c-base, Berlin</span>
+                        
+                        
+                    </div>
+                    
+                    <div class="event-summary">Beleuchtung der Mainhall wird konfiguriert. 
+
+pate: cven</div>
+                    
+                </div>
+                
+                <div class="event-card" data-search="🚀1 week python challenge [join now] - real data analysis in a week berlin baig academy of ai">
                     <div class="event-header">
                         <div class="event-title">
                             <a href="https://www.meetup.com/baig-academy-of-ai/events/313693635/" target="_blank" rel="noopener">🚀1 Week Python Challenge [Join now] - Real Data Analysis in a week</a>
                             <span class="source-tag source-meetup">meetup</span>
+                        </div>
+                        <div class="event-actions">
+                            
+                            <a class="cal-link" target="_blank" rel="noopener"
+                               href="https://www.google.com/calendar/render?action=TEMPLATE&text=%F0%9F%9A%801%20Week%20Python%20Challenge%20%5BJoin%20now%5D%20-%20Real%20Data%20Analysis%20in%20a%20week&dates=20260315T110000/20260315T110000&location=Berlin&details=https%3A//www.meetup.com/baig-academy-of-ai/events/313693635/">+ Cal</a>
                         </div>
                     </div>
                     <div class="event-details">
@@ -351,11 +464,16 @@ Each day you&#39;ll get a Python task using a real dataset of 155</div>
                     
                 </div>
                 
-                <div class="event-card">
+                <div class="event-card" data-search="pitch. improve. connect. the social hub berlin, berlin the startup lounge">
                     <div class="event-header">
                         <div class="event-title">
                             <a href="https://www.meetup.com/the-startup-launch/events/313724131/" target="_blank" rel="noopener">Pitch. Improve. Connect.</a>
                             <span class="source-tag source-meetup">meetup</span>
+                        </div>
+                        <div class="event-actions">
+                            
+                            <a class="cal-link" target="_blank" rel="noopener"
+                               href="https://www.google.com/calendar/render?action=TEMPLATE&text=Pitch.%20Improve.%20Connect.&dates=20260315T120000/20260315T120000&location=The%20Social%20Hub%20Berlin%2C%20Berlin&details=https%3A//www.meetup.com/the-startup-launch/events/313724131/">+ Cal</a>
                         </div>
                     </div>
                     <div class="event-details">
@@ -375,11 +493,16 @@ Join us for an interactive startup session where founders, builders, and startup
                     
                 </div>
                 
-                <div class="event-card">
+                <div class="event-card" data-search="sunday tech coffee meetup straßenbräu, berlin berlin software, tech, engineering, ai meetup group">
                     <div class="event-header">
                         <div class="event-title">
                             <a href="https://www.meetup.com/berlin-software-engineering-leadership-meetup-group/events/313172288/" target="_blank" rel="noopener">Sunday Tech Coffee Meetup</a>
                             <span class="source-tag source-meetup">meetup</span>
+                        </div>
+                        <div class="event-actions">
+                            
+                            <a class="cal-link" target="_blank" rel="noopener"
+                               href="https://www.google.com/calendar/render?action=TEMPLATE&text=Sunday%20Tech%20Coffee%20Meetup&dates=20260315T130000/20260315T130000&location=Stra%C3%9Fenbr%C3%A4u%2C%20Berlin&details=https%3A//www.meetup.com/berlin-software-engineering-leadership-meetup-group/events/313172288/">+ Cal</a>
                         </div>
                     </div>
                     <div class="event-details">
@@ -395,11 +518,16 @@ We are usually inside and to the right. Ask the barista/bartender if you can&#39
                     
                 </div>
                 
-                <div class="event-card">
+                <div class="event-card" data-search="oracle java 21 certification preparation discussion berlin java enterprise application development">
                     <div class="event-header">
                         <div class="event-title">
                             <a href="https://www.meetup.com/java-enterprise-apps-development/events/313252746/" target="_blank" rel="noopener">Oracle Java 21 Certification preparation discussion</a>
                             <span class="source-tag source-meetup">meetup</span>
+                        </div>
+                        <div class="event-actions">
+                            
+                            <a class="cal-link" target="_blank" rel="noopener"
+                               href="https://www.google.com/calendar/render?action=TEMPLATE&text=Oracle%20Java%2021%20Certification%20preparation%20discussion&dates=20260315T180000/20260315T180000&location=Berlin&details=https%3A//www.meetup.com/java-enterprise-apps-development/events/313252746/">+ Cal</a>
                         </div>
                     </div>
                     <div class="event-details">
@@ -423,8 +551,99 @@ Since AI tools generate the code the developer now needs to discover the errors 
         
 
         <footer>
-            Berlin Tech Events Scraper · Auto-generated from 7 sources
+            <div>Berlin Tech Events Scraper · Auto-generated from 12 sources</div>
+            
+            <div class="source-stats">
+                
+                <span class="source-stat ">
+                    <span class="source-tag source-ai-berlin">ai-berlin</span>
+                    <span class="count">1</span>
+                </span>
+                
+                <span class="source-stat ">
+                    <span class="source-tag source-allevents">allevents</span>
+                    <span class="count">0</span>
+                </span>
+                
+                <span class="source-stat ">
+                    <span class="source-tag source-berlin-de">berlin.de</span>
+                    <span class="count">0</span>
+                </span>
+                
+                <span class="source-stat ">
+                    <span class="source-tag source-c-base">c-base</span>
+                    <span class="count">1</span>
+                </span>
+                
+                <span class="source-stat ">
+                    <span class="source-tag source-dev-events">dev-events</span>
+                    <span class="count">0</span>
+                </span>
+                
+                <span class="source-stat ">
+                    <span class="source-tag source-eventbrite">eventbrite</span>
+                    <span class="count">0</span>
+                </span>
+                
+                <span class="source-stat ">
+                    <span class="source-tag source-ihk-berlin">ihk-berlin</span>
+                    <span class="count">0</span>
+                </span>
+                
+                <span class="source-stat ">
+                    <span class="source-tag source-luma">luma</span>
+                    <span class="count">0</span>
+                </span>
+                
+                <span class="source-stat ">
+                    <span class="source-tag source-meetup">meetup</span>
+                    <span class="count">9</span>
+                </span>
+                
+                <span class="source-stat ">
+                    <span class="source-tag source-serpapi">serpapi</span>
+                    <span class="count">0</span>
+                </span>
+                
+                <span class="source-stat ">
+                    <span class="source-tag source-sibb">sibb</span>
+                    <span class="count">0</span>
+                </span>
+                
+                <span class="source-stat ">
+                    <span class="source-tag source-visitberlin">visitberlin</span>
+                    <span class="count">0</span>
+                </span>
+                
+            </div>
+            
         </footer>
     </div>
+
+    <script>
+    (function() {
+        var input = document.getElementById('searchInput');
+        var countEl = document.getElementById('searchCount');
+        var cards = document.querySelectorAll('.event-card');
+        var total = cards.length;
+
+        input.addEventListener('input', function() {
+            var q = this.value.toLowerCase().trim();
+            if (!q) {
+                cards.forEach(function(c) { c.classList.remove('hidden'); });
+                countEl.style.display = 'none';
+                return;
+            }
+            var shown = 0;
+            cards.forEach(function(c) {
+                var match = c.getAttribute('data-search').indexOf(q) !== -1;
+                c.classList.toggle('hidden', !match);
+                if (match) shown++;
+            });
+            countEl.textContent = shown + ' of ' + total + ' events match';
+            countEl.style.display = 'block';
+        });
+    })();
+    </script>
 </body>
 </html>
